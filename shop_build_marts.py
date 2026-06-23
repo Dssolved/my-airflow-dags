@@ -10,10 +10,6 @@ SQL_DIR = Path(__file__).parent / "sql" / "refresh"
 
 
 def execute_sql_file(filename: str) -> None:
-    """
-    Читает SQL-файл и выполняет его
-    в аналитической PostgreSQL.
-    """
     sql_path = SQL_DIR / filename
 
     if not sql_path.exists():
