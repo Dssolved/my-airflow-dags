@@ -37,8 +37,24 @@ def test_db_connections():
 
         print(f"PostgreSQL connection successful. RAW tables count: {result[0]}")
 
+    @task
+    def check_wms_postgres() -> None:
+        hook = PostgresHook(postgres_conn_id="wms_postgres")
+
+        result = hook.get_first("""
+                                SELECT COUNT(*)
+                                FROM information_schema.tables
+                                WHERE table_schema = 'public'
+                                  AND table_name IN ('carriers', 'inventory', 'returns',
+                                                     'shipment_items', 'shipments',
+                                                     'stock_movements', 'warehouses')
+                                """)
+
+        print(f"WMS PostgreSQL connection successful. WMS tables count: {result[0]}")
+
     check_mysql()
     check_postgres()
+    check_wms_postgres()
 
 
 test_db_connections()
