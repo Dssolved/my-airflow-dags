@@ -31,12 +31,7 @@ def execute_sql_file(filename: str) -> None:
 @dag(
     dag_id="shop_build_marts",
     schedule=None,
-    start_date=pendulum.datetime(
-        2026,
-        1,
-        1,
-        tz="UTC",
-    ),
+    start_date=pendulum.datetime(2026, 1, 1, tz="UTC"),
     catchup=False,
     tags=["shop", "postgres", "marts"],
 )
@@ -44,21 +39,23 @@ def shop_build_marts():
 
     @task
     def refresh_orders() -> None:
-        execute_sql_file(
-            "refresh_mart_orders.sql"
-        )
+        execute_sql_file("refresh_mart_orders.sql")
 
     @task
     def refresh_sales_items() -> None:
-        execute_sql_file(
-            "refresh_mart_sales_items.sql"
-        )
+        execute_sql_file("refresh_mart_sales_items.sql")
 
     @task
     def refresh_rfm_customers() -> None:
-        execute_sql_file(
-            "refresh_mart_rfm_customers.sql"
-        )
+        execute_sql_file("refresh_mart_rfm_customers.sql")
+
+    @task
+    def refresh_warehouse_candidates() -> None:
+        execute_sql_file("refresh_mart_warehouse_candidates.sql")
+
+    @task
+    def refresh_country_candidates() -> None:
+        execute_sql_file("refresh_mart_country_candidates.sql")
 
     @task
     def validate_marts() -> None:
@@ -66,25 +63,21 @@ def shop_build_marts():
             postgres_conn_id="analytics_postgres"
         )
 
-        raw_orders = postgres_hook.get_first("""
-                                             SELECT COUNT(*)
-                                             FROM raw.orders
-                                             """)[0]
+        raw_orders = postgres_hook.get_first(
+            "SELECT COUNT(*) FROM raw.orders"
+        )[0]
 
-        mart_orders = postgres_hook.get_first("""
-                                              SELECT COUNT(*)
-                                              FROM mart.orders
-                                              """)[0]
+        mart_orders = postgres_hook.get_first(
+            "SELECT COUNT(*) FROM mart.orders"
+        )[0]
 
-        raw_items = postgres_hook.get_first("""
-                                            SELECT COUNT(*)
-                                            FROM raw.order_items
-                                            """)[0]
+        raw_items = postgres_hook.get_first(
+            "SELECT COUNT(*) FROM raw.order_items"
+        )[0]
 
-        mart_items = postgres_hook.get_first("""
-                                             SELECT COUNT(*)
-                                             FROM mart.sales_items
-                                             """)[0]
+        mart_items = postgres_hook.get_first(
+            "SELECT COUNT(*) FROM mart.sales_items"
+        )[0]
 
         source_rfm_customers = postgres_hook.get_first("""
                                                        SELECT COUNT(DISTINCT user_id)
@@ -92,10 +85,9 @@ def shop_build_marts():
                                                        WHERE status = 'delivered'
                                                        """)[0]
 
-        mart_rfm_customers = postgres_hook.get_first("""
-                                                     SELECT COUNT(*)
-                                                     FROM mart.rfm_customers
-                                                     """)[0]
+        mart_rfm_customers = postgres_hook.get_first(
+            "SELECT COUNT(*) FROM mart.rfm_customers"
+        )[0]
 
         raw_revenue = postgres_hook.get_first("""
                                               SELECT COALESCE(SUM(total_amount), 0)
@@ -103,52 +95,48 @@ def shop_build_marts():
                                               WHERE status = 'delivered'
                                               """)[0]
 
-        rfm_revenue = postgres_hook.get_first("""
-                                              SELECT COALESCE(SUM(monetary), 0)
-                                              FROM mart.rfm_customers
-                                              """)[0]
+        rfm_revenue = postgres_hook.get_first(
+            "SELECT COALESCE(SUM(monetary), 0) FROM mart.rfm_customers"
+        )[0]
+
+        warehouse_candidates = postgres_hook.get_first(
+            "SELECT COUNT(*) FROM mart.warehouse_candidates"
+        )[0]
+
+        country_candidates = postgres_hook.get_first(
+            "SELECT COUNT(*) FROM mart.country_candidates"
+        )[0]
 
         checks = {
-            "orders count": (
-                raw_orders,
-                mart_orders,
-            ),
-            "sales items count": (
-                raw_items,
-                mart_items,
-            ),
-            "RFM customers count": (
-                source_rfm_customers,
-                mart_rfm_customers,
-            ),
-            "delivered revenue": (
-                raw_revenue,
-                rfm_revenue,
-            ),
+            "orders count":         (raw_orders, mart_orders),
+            "sales items count":    (raw_items, mart_items),
+            "RFM customers count":  (source_rfm_customers, mart_rfm_customers),
+            "delivered revenue":    (raw_revenue, rfm_revenue),
         }
 
         errors = []
 
         for check_name, values in checks.items():
             expected, actual = values
-
-            print(
-                f"{check_name}: "
-                f"expected={expected}, "
-                f"actual={actual}"
-            )
-
+            print(f"{check_name}: expected={expected}, actual={actual}")
             if expected != actual:
                 errors.append(
-                    f"{check_name}: "
-                    f"expected={expected}, "
-                    f"actual={actual}"
+                    f"{check_name}: expected={expected}, actual={actual}"
                 )
+
+        # Для витрин кандидатов проверяем что не пустые
+        print(f"warehouse_candidates rows: {warehouse_candidates}")
+        print(f"country_candidates rows: {country_candidates}")
+
+        if warehouse_candidates == 0:
+            errors.append("warehouse_candidates is empty")
+
+        if country_candidates == 0:
+            errors.append("country_candidates is empty")
 
         if errors:
             raise ValueError(
-                "Mart validation failed:\n"
-                + "\n".join(errors)
+                "Mart validation failed:\n" + "\n".join(errors)
             )
 
         print("All marts validated successfully")
@@ -156,13 +144,16 @@ def shop_build_marts():
     orders_task = refresh_orders()
     sales_items_task = refresh_sales_items()
     rfm_task = refresh_rfm_customers()
-
+    warehouse_task = refresh_warehouse_candidates()
+    country_task = refresh_country_candidates()
     validation_task = validate_marts()
 
     [
         orders_task,
         sales_items_task,
         rfm_task,
+        warehouse_task,
+        country_task,
     ] >> validation_task
 
 
