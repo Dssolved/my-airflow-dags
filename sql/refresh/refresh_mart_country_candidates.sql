@@ -63,6 +63,8 @@ WITH delivered_orders AS (
          SELECT
              cs.country_iso,
              cs.country_name,
+             cs.country_lat,
+             cs.country_lon,
              cs.delivered_orders,
              cs.revenue,
              cs.customers,
@@ -98,6 +100,8 @@ WITH delivered_orders AS (
 SELECT
     country_iso,
     country_name,
+    ROUND(country_lat::NUMERIC, 4) AS lat,
+    ROUND(country_lon::NUMERIC, 4) AS lon,
     delivered_orders,
     ROUND(revenue::NUMERIC, 2)          AS revenue,
     customers,
